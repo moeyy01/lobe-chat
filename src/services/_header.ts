@@ -1,20 +1,23 @@
-import { LOBE_CHAT_ACCESS_CODE, OPENAI_API_KEY_HEADER_KEY, OPENAI_END_POINT } from '@/const/fetch';
+import { LOBE_USER_ID, OPENAI_API_KEY_HEADER_KEY, OPENAI_END_POINT } from '@/const/fetch';
+import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import { useUserStore } from '@/store/user';
-import { keyVaultsConfigSelectors } from '@/store/user/selectors';
 
 /**
  * TODO: Need to be removed after tts refactor
  * @deprecated
  */
-// eslint-disable-next-line no-undef
+ 
 export const createHeaderWithOpenAI = (header?: HeadersInit): HeadersInit => {
-  const openAIConfig = keyVaultsConfigSelectors.openAIConfig(useUserStore.getState());
+  const state = useUserStore.getState();
 
-  // eslint-disable-next-line no-undef
+  const keyVaults: Record<string, any> =
+    aiProviderSelectors.providerKeyVaults('openai')(useAiInfraStore.getState()) || {};
+
+   
   return {
     ...header,
-    [LOBE_CHAT_ACCESS_CODE]: keyVaultsConfigSelectors.password(useUserStore.getState()),
-    [OPENAI_API_KEY_HEADER_KEY]: openAIConfig.apiKey || '',
-    [OPENAI_END_POINT]: openAIConfig.baseURL || '',
+    [LOBE_USER_ID]: state.user?.id || '',
+    [OPENAI_API_KEY_HEADER_KEY]: keyVaults.apiKey || '',
+    [OPENAI_END_POINT]: keyVaults.baseURL || '',
   };
 };

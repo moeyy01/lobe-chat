@@ -1,43 +1,21 @@
-import { ActionIcon, DiscordIcon, Icon } from '@lobehub/ui';
-import { Badge } from 'antd';
-import { ItemType } from 'antd/es/menu/interface';
-import {
-  Book,
-  CircleUserRound,
-  Cloudy,
-  Download,
-  Feather,
-  HardDriveDownload,
-  HardDriveUpload,
-  LifeBuoy,
-  LogOut,
-  Mail,
-  Maximize,
-  Settings2,
-} from 'lucide-react';
-import Link from 'next/link';
-import { PropsWithChildren, memo } from 'react';
+import { LOBE_CHAT_CLOUD, UTM_SOURCE } from '@lobechat/business-const';
+import { isDesktop } from '@lobechat/const';
+import { Flexbox, Hotkey, Icon } from '@lobehub/ui';
+import { Tag } from '@lobehub/ui/base-ui';
+import type { ItemType } from 'antd/es/menu/interface';
+import { BrainCircuit, Cloudy, Download, HardDriveDownload, LogOut, Settings2 } from 'lucide-react';
+import type { PropsWithChildren } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
-import urlJoin from 'url-join';
 
-import type { MenuProps } from '@/components/Menu';
-import {
-  DISCORD,
-  DOCUMENTS_REFER_URL,
-  EMAIL_SUPPORT,
-  GITHUB_ISSUES,
-  OFFICIAL_URL,
-  UTM_SOURCE,
-  mailTo,
-} from '@/const/url';
-import { isServerMode } from '@/const/version';
+import useBusinessMenuItems from '@/business/client/features/User/useBusinessMenuItems';
+import { useHasActiveWorkspace } from '@/business/client/hooks/useHasActiveWorkspace';
+import { type MenuProps } from '@/components/Menu';
+import { DEFAULT_DESKTOP_HOTKEY_CONFIG } from '@/const/desktop';
+import { OFFICIAL_URL } from '@/const/url';
 import DataImporter from '@/features/DataImporter';
-import { useOpenSettings } from '@/hooks/useInterceptingRoutes';
-import { usePWAInstall } from '@/hooks/usePWAInstall';
-import { useQueryRoute } from '@/hooks/useQueryRoute';
-import { configService } from '@/services/config';
-import { SettingsTabs } from '@/store/global/initialState';
+import WorkspaceLink from '@/features/Workspace/WorkspaceLink';
+import { useNavLayout } from '@/hooks/useNavLayout';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
@@ -49,7 +27,7 @@ const NewVersionBadge = memo(
     children,
     showBadge,
     onClick,
-  }: PropsWithChildren & { onClick: () => void; showBadge?: boolean }) => {
+  }: PropsWithChildren & { onClick?: () => void; showBadge?: boolean }) => {
     const { t } = useTranslation('common');
     if (!showBadge)
       return (
@@ -58,192 +36,117 @@ const NewVersionBadge = memo(
         </Flexbox>
       );
     return (
-      <Flexbox align={'center'} flex={1} gap={8} horizontal onClick={onClick} width={'100%'}>
-        <span>{children}</span>
-        <Badge count={t('upgradeVersion.hasNew')} />
+      <Flexbox horizontal align={'center'} flex={1} gap={8} width={'100%'} onClick={onClick}>
+        {children}
+        <Tag color={'info'} size={'small'} style={{ borderRadius: 16, paddingInline: 8 }}>
+          {t('upgradeVersion.hasNew')}
+        </Tag>
       </Flexbox>
     );
   },
 );
 
 export const useMenu = () => {
-  const router = useQueryRoute();
-  const { canInstall, install } = usePWAInstall();
   const hasNewVersion = useNewVersion();
-  const openSettings = useOpenSettings();
   const { t } = useTranslation(['common', 'setting', 'auth']);
-  const { showCloudPromotion } = useServerConfigStore(featureFlagsSelectors);
-  const [isLogin, isLoginWithAuth, isLoginWithClerk, openUserProfile] = useUserStore((s) => [
+  const { showCloudPromotion, hideDocs } = useServerConfigStore(featureFlagsSelectors);
+  const [isLogin, isLoginWithAuth] = useUserStore((s) => [
     authSelectors.isLogin(s),
     authSelectors.isLoginWithAuth(s),
-    authSelectors.isLoginWithClerk(s),
-    s.openUserProfile,
   ]);
-
-  const profile: MenuProps['items'] = [
-    {
-      icon: <Icon icon={CircleUserRound} />,
-      key: 'profile',
-      label: t('userPanel.profile'),
-      onClick: () => openUserProfile(),
-    },
-  ];
+  const { userPanel } = useNavLayout();
+  const businessMenuItems = useBusinessMenuItems(isLogin);
+  const hasActiveWorkspace = useHasActiveWorkspace();
 
   const settings: MenuProps['items'] = [
     {
+      extra: isDesktop ? (
+        <div>
+          <Hotkey keys={DEFAULT_DESKTOP_HOTKEY_CONFIG.openSettings} />
+        </div>
+      ) : undefined,
       icon: <Icon icon={Settings2} />,
       key: 'setting',
       label: (
-        <Flexbox align={'center'} gap={8} horizontal>
-          <NewVersionBadge onClick={openSettings} showBadge={hasNewVersion}>
-            {t('userPanel.setting')}
+        <WorkspaceLink to="/settings">
+          <NewVersionBadge showBadge={hasNewVersion}>
+            {t(hasActiveWorkspace ? 'userPanel.workspaceSetting' : 'userPanel.setting')}
           </NewVersionBadge>
-          <ActionIcon
-            icon={Maximize}
-            onClick={() => router.push(urlJoin('/settings', SettingsTabs.Common))}
-            size={'small'}
-            title={t('fullscreen')}
-          />
-        </Flexbox>
+        </WorkspaceLink>
       ),
     },
-    {
-      type: 'divider',
-    },
+    ...(userPanel.showMemory
+      ? [
+          {
+            icon: <Icon icon={BrainCircuit} />,
+            key: 'memory',
+            label: (
+              <WorkspaceLink escape to="/memory">
+                {t('tab.memory')}
+              </WorkspaceLink>
+            ),
+          },
+        ]
+      : []),
   ];
-
-  /* ↓ cloud slot ↓ */
-
-  /* ↑ cloud slot ↑ */
-
-  const pwa: MenuProps['items'] = [
-    {
-      icon: <Icon icon={Download} />,
-      key: 'pwa',
-      label: t('installPWA'),
-      onClick: () => install(),
-    },
-    {
-      type: 'divider',
-    },
-  ];
-
-  const data = !isLogin
-    ? []
-    : ([
-        {
-          icon: <Icon icon={HardDriveDownload} />,
-          key: 'import',
-          label: <DataImporter>{t('import')}</DataImporter>,
-        },
-        isServerMode
-          ? null
-          : {
-              children: [
-                {
-                  key: 'allAgent',
-                  label: t('exportType.allAgent'),
-                  onClick: configService.exportAgents,
-                },
-                {
-                  key: 'allAgentWithMessage',
-                  label: t('exportType.allAgentWithMessage'),
-                  onClick: configService.exportSessions,
-                },
-                {
-                  key: 'globalSetting',
-                  label: t('exportType.globalSetting'),
-                  onClick: configService.exportSettings,
-                },
-                {
-                  type: 'divider',
-                },
-                {
-                  key: 'all',
-                  label: t('exportType.all'),
-                  onClick: configService.exportAll,
-                },
-              ],
-              icon: <Icon icon={HardDriveUpload} />,
-              key: 'export',
-              label: t('export'),
-            },
-        {
-          type: 'divider',
-        },
-      ].filter(Boolean) as ItemType[]);
 
   const helps: MenuProps['items'] = [
     showCloudPromotion && {
       icon: <Icon icon={Cloudy} />,
       key: 'cloud',
       label: (
-        <Link href={`${OFFICIAL_URL}?utm_source=${UTM_SOURCE}`} target={'_blank'}>
-          {t('userPanel.cloud', { name: 'LobeChat Cloud' })}
-        </Link>
+        <a
+          href={`${OFFICIAL_URL}?utm_source=${UTM_SOURCE}`}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {t('userPanel.cloud', { name: LOBE_CHAT_CLOUD })}
+        </a>
       ),
-    },
-    {
-      icon: <Icon icon={DiscordIcon} />,
-      key: 'discord',
-      label: (
-        <Link href={DISCORD} target={'_blank'}>
-          {t('userPanel.discord')}
-        </Link>
-      ),
-    },
-    {
-      children: [
-        {
-          icon: <Icon icon={Book} />,
-          key: 'docs',
-          label: (
-            <Link href={DOCUMENTS_REFER_URL} target={'_blank'}>
-              {t('userPanel.docs')}
-            </Link>
-          ),
-        },
-        {
-          icon: <Icon icon={Feather} />,
-          key: 'feedback',
-          label: (
-            <Link href={GITHUB_ISSUES} target={'_blank'}>
-              {t('userPanel.feedback')}
-            </Link>
-          ),
-        },
-        {
-          icon: <Icon icon={Mail} />,
-          key: 'email',
-          label: (
-            <Link href={mailTo(EMAIL_SUPPORT)} target={'_blank'}>
-              {t('userPanel.email')}
-            </Link>
-          ),
-        },
-      ],
-      icon: <Icon icon={LifeBuoy} />,
-      key: 'help',
-      label: t('userPanel.help'),
-    },
-    {
-      type: 'divider',
     },
   ].filter(Boolean) as ItemType[];
+
+  const getApp: MenuProps['items'] = [
+    {
+      icon: <Icon icon={Download} />,
+      key: 'get-app',
+      label: (
+        <WorkspaceLink escape to="/apps">
+          {t('getApp')}
+        </WorkspaceLink>
+      ),
+    },
+  ];
 
   const mainItems = [
     {
       type: 'divider',
     },
-    ...(isLogin ? settings : []),
-    ...(isLoginWithClerk ? profile : []),
-    /* ↓ cloud slot ↓ */
 
-    /* ↑ cloud slot ↑ */
-    ...(canInstall ? pwa : []),
-    ...data,
-    ...helps,
-  ].filter(Boolean) as MenuProps['items'];
+    ...(isLogin ? settings : []),
+    ...businessMenuItems,
+    ...(userPanel.showDataImporter && isLogin
+      ? [
+          {
+            icon: <Icon icon={HardDriveDownload} />,
+            key: 'import',
+            label: <DataImporter>{t('importData')}</DataImporter>,
+          },
+          {
+            type: 'divider' as const,
+          },
+        ]
+      : []),
+    ...(!hideDocs ? helps : []),
+    ...getApp,
+  ]
+    .filter(Boolean)
+    // Remove consecutive dividers to prevent double divider lines
+    .filter((item, index, arr) => {
+      if (index === 0) return true;
+      const isDivider = (i: any) => i && typeof i === 'object' && i.type === 'divider';
+      return !(isDivider(item) && isDivider(arr[index - 1]));
+    }) as MenuProps['items'];
 
   const logoutItems: MenuProps['items'] = isLoginWithAuth
     ? [
@@ -251,6 +154,9 @@ export const useMenu = () => {
           icon: <Icon icon={LogOut} />,
           key: 'logout',
           label: <span>{t('signout', { ns: 'auth' })}</span>,
+        },
+        {
+          type: 'divider',
         },
       ]
     : [];

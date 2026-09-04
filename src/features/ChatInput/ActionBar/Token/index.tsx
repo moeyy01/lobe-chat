@@ -1,18 +1,23 @@
-import dynamic from 'next/dynamic';
+import { type PropsWithChildren } from 'react';
 import { memo } from 'react';
 
-import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/slices/chat';
-import { useUserStore } from '@/store/user';
-import { modelProviderSelectors } from '@/store/user/selectors';
+import { useModelHasContextWindowToken } from '@/hooks/useModelHasContextWindowToken';
+import dynamic from '@/libs/next/dynamic';
 
 const LargeTokenContent = dynamic(() => import('./TokenTag'), { ssr: false });
 
-const Token = memo(() => {
-  const model = useAgentStore(agentSelectors.currentAgentModel);
-  const showTag = useUserStore(modelProviderSelectors.isModelHasMaxToken(model));
+const Token = memo<PropsWithChildren>(({ children }) => {
+  const showTag = useModelHasContextWindowToken();
 
-  return showTag && <LargeTokenContent />;
+  return showTag && children;
 });
 
-export default Token;
+const ContextWindow = () => {
+  return (
+    <Token>
+      <LargeTokenContent />
+    </Token>
+  );
+};
+
+export default ContextWindow;

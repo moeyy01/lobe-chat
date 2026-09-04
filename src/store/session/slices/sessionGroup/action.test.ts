@@ -8,15 +8,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-vi.mock('@/components/AntdStaticMethods', () => ({
-  message: {
-    loading: vi.fn(),
-    success: vi.fn(),
-    error: vi.fn(),
-    destroy: vi.fn(),
-  },
-}));
-
 describe('createSessionGroupSlice', () => {
   describe('addSessionGroup', () => {
     it('should add a session group and refresh sessions', async () => {
@@ -38,26 +29,10 @@ describe('createSessionGroupSlice', () => {
     });
   });
 
-  describe('clearSessionGroups', () => {
-    it('should clear session groups and refresh sessions', async () => {
-      vi.spyOn(sessionService, 'removeSessionGroups');
-      const spyOnRefreshSessions = vi.spyOn(useSessionStore.getState(), 'refreshSessions');
-
-      const { result } = renderHook(() => useSessionStore());
-
-      await act(async () => {
-        await result.current.clearSessionGroups();
-      });
-
-      expect(sessionService.removeSessionGroups).toHaveBeenCalled();
-      expect(spyOnRefreshSessions).toHaveBeenCalled();
-    });
-  });
-
   describe('removeSessionGroup', () => {
     it('should remove a session group and refresh sessions', async () => {
       const mockId = 'mock-id';
-      vi.spyOn(sessionService, 'removeSessionGroup');
+      vi.spyOn(sessionService, 'removeSessionGroup').mockResolvedValueOnce(undefined as any);
       const spyOnRefreshSessions = vi.spyOn(useSessionStore.getState(), 'refreshSessions');
 
       const { result } = renderHook(() => useSessionStore());
@@ -75,7 +50,7 @@ describe('createSessionGroupSlice', () => {
     it('should update a session group id and refresh sessions', async () => {
       const mockSessionId = 'session-id';
       const mockGroupId = 'group-id';
-      vi.spyOn(sessionService, 'updateSession');
+      vi.spyOn(sessionService, 'updateSession').mockResolvedValueOnce(undefined as any);
       const spyOnRefreshSessions = vi.spyOn(useSessionStore.getState(), 'refreshSessions');
 
       const { result } = renderHook(() => useSessionStore());
@@ -96,7 +71,7 @@ describe('createSessionGroupSlice', () => {
       const mockId = 'mock-id';
       const mockName = 'New Name';
       const spyOnRefreshSessions = vi.spyOn(useSessionStore.getState(), 'refreshSessions');
-      vi.spyOn(sessionService, 'updateSessionGroup');
+      vi.spyOn(sessionService, 'updateSessionGroup').mockResolvedValueOnce(undefined as any);
 
       const { result } = renderHook(() => useSessionStore());
 
@@ -115,7 +90,7 @@ describe('createSessionGroupSlice', () => {
         { id: 'id1', sort: 0 },
         { id: 'id2', sort: 1 },
       ];
-      vi.spyOn(sessionService, 'updateSessionGroupOrder');
+      vi.spyOn(sessionService, 'updateSessionGroupOrder').mockResolvedValueOnce(undefined as any);
       const spyOnRefreshSessions = vi.spyOn(useSessionStore.getState(), 'refreshSessions');
 
       const { result } = renderHook(() => useSessionStore());

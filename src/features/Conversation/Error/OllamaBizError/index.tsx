@@ -1,14 +1,13 @@
-import { Skeleton } from 'antd';
-import dynamic from 'next/dynamic';
+import { type ChatMessageError } from '@lobechat/types';
+import { type AlertProps, Skeleton } from '@lobehub/ui/base-ui';
 import { memo } from 'react';
 
-import { ChatMessage } from '@/types/message';
+import ErrorContent from '@/features/Conversation/ChatItem/components/ErrorContent';
+import dynamic from '@/libs/next/dynamic';
 
-import ErrorJsonViewer from '../ErrorJsonViewer';
+const loading = () => <Skeleton style={{ width: 300 }} />;
 
-const loading = () => <Skeleton active style={{ width: 300 }} />;
-
-const SetupGuide = dynamic(() => import('./SetupGuide'), { loading, ssr: false });
+const SetupGuide = dynamic(() => import('../OllamaSetupGuide'), { loading, ssr: false });
 
 const InvalidModel = dynamic(() => import('./InvalidOllamaModel'), { loading, ssr: false });
 
@@ -23,9 +22,16 @@ interface OllamaErrorResponse {
   error: OllamaError;
 }
 
-const UNRESOLVED_MODEL_REGEXP = /model '([\w+,-_]+)' not found/;
+// eslint-disable-next-line regexp/no-dupe-characters-character-class, regexp/no-obscure-range
+const UNRESOLVED_MODEL_REGEXP = /model "([\w+,-_]+)" not found/;
 
-const OllamaBizError = memo<ChatMessage>(({ error, id }) => {
+interface OllamaBizErrorProps {
+  alertError?: AlertProps;
+  error?: ChatMessageError | null;
+  id: string;
+}
+
+const OllamaBizError = memo<OllamaBizErrorProps>(({ alertError, error, id }) => {
   const errorBody: OllamaErrorResponse = (error as any)?.body;
 
   const errorMessage = errorBody.error?.message;
@@ -38,10 +44,10 @@ const OllamaBizError = memo<ChatMessage>(({ error, id }) => {
 
   // error of not enable model or not set the CORS rules
   if (errorMessage?.includes('Failed to fetch')) {
-    return <SetupGuide />;
+    return <SetupGuide id={id} />;
   }
 
-  return <ErrorJsonViewer error={error} id={id} />;
+  return <ErrorContent error={alertError} id={id} />;
 });
 
 export default OllamaBizError;

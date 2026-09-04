@@ -1,22 +1,30 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { mutate } from 'swr';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { withSWR } from '~test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_PREFERENCE } from '@/const/user';
+import type * as SWRLib from '@/libs/swr';
+import { taskTemplateKeys, userKeys } from '@/libs/swr/keys';
 import { userService } from '@/services/user';
-import { ClientService } from '@/services/user/client';
 import { useUserStore } from '@/store/user';
-import { preferenceSelectors } from '@/store/user/selectors';
-import { GlobalServerConfig } from '@/types/serverConfig';
-import { UserInitializationState, UserPreference } from '@/types/user';
-import { switchLang } from '@/utils/client/switchLang';
+import { userGeneralSettingsSelectors } from '@/store/user/selectors';
+import { type GlobalServerConfig } from '@/types/serverConfig';
+import { type UserInitializationState, type UserPreference } from '@/types/user';
+import { withSWR } from '~test-utils';
 
-vi.mock('zustand/traditional');
+import { isTaskTemplateRecommendationKey } from './action';
 
-vi.mock('@/utils/client/switchLang', () => ({
-  switchLang: vi.fn(),
+const swrMocks = vi.hoisted(() => ({
+  mutate: vi.fn(),
 }));
+
+vi.mock('@/libs/swr', async (importOriginal) => {
+  const actual = await importOriginal<typeof SWRLib>();
+
+  return {
+    ...actual,
+    mutate: swrMocks.mutate,
+  };
+});
 
 vi.mock('swr', async (importOriginal) => {
   const modules = await importOriginal();
@@ -26,25 +34,96 @@ vi.mock('swr', async (importOriginal) => {
   };
 });
 
+beforeEach(() => {
+  swrMocks.mutate.mockReset();
+  swrMocks.mutate.mockResolvedValue(undefined);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('createCommonSlice', () => {
+  describe('isTaskTemplateRecommendationKey', () => {
+    it('matches every daily recommendation cache variant', () => {
+      expect(
+        isTaskTemplateRecommendationKey(taskTemplateKeys.listDailyRecommend('seed', 3, 'zh-CN')),
+      ).toBe(true);
+      expect(
+        isTaskTemplateRecommendationKey(['taskTemplate:listDailyRecommend', 'seed', 3, 'zh-CN']),
+      ).toBe(false);
+      expect(isTaskTemplateRecommendationKey(userKeys.initState())).toBe(false);
+    });
+  });
+
   describe('updateAvatar', () => {
     it('should update avatar', async () => {
       const { result } = renderHook(() => useUserStore());
-      const avatar = 'new-avatar';
+      const avatar = 'data:image/png;base64,';
 
       const spyOn = vi.spyOn(result.current, 'refreshUserState');
-      const updateAvatarSpy = vi.spyOn(ClientService.prototype, 'updateAvatar');
+      const updateAvatarSpy = vi.spyOn(userService, 'updateAvatar').mockResolvedValue({} as any);
 
       await act(async () => {
         await result.current.updateAvatar(avatar);
       });
 
-      expect(updateAvatarSpy).toHaveBeenCalledWith(avatar);
+      expect(updateAvatarSpy).toHaveBeenCalledWith('data:image/png;base64,');
       expect(spyOn).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateInterests', () => {
+    it('optimistically updates user.interests before the service call resolves', async () => {
+      act(() => {
+        useUserStore.setState({ user: { id: 'u1', interests: ['old'] } as any });
+      });
+
+      let resolveService: () => void = () => {};
+      const updateSpy = vi.spyOn(userService, 'updateInterests').mockImplementation(
+        () =>
+          new Promise<void>((r) => {
+            resolveService = r;
+          }) as any,
+      );
+
+      let pending: Promise<void> | undefined;
+      act(() => {
+        pending = useUserStore.getState().updateInterests(['new']);
+      });
+
+      expect(useUserStore.getState().user?.interests).toEqual(['new']);
+
+      await act(async () => {
+        resolveService();
+        await pending;
+      });
+
+      expect(updateSpy).toHaveBeenCalledWith(['new']);
+    });
+
+    it('does not fail the interest update when recommendation cache invalidation fails', async () => {
+      act(() => {
+        useUserStore.setState({ user: { id: 'u1', interests: ['old'] } as any });
+      });
+
+      const cacheError = new Error('cache failed');
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(userService, 'updateInterests').mockResolvedValue(undefined as any);
+      swrMocks.mutate.mockImplementation((key) => {
+        if (key === isTaskTemplateRecommendationKey) return Promise.reject(cacheError);
+
+        return Promise.resolve(undefined);
+      });
+
+      await expect(useUserStore.getState().updateInterests(['new'])).resolves.toBeUndefined();
+      await waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith(
+          '[taskTemplate:recommendationCache:invalidate]',
+          cacheError,
+        );
+      });
+      expect(useUserStore.getState().user?.interests).toEqual(['new']);
     });
   });
 
@@ -53,6 +132,7 @@ describe('createCommonSlice', () => {
       defaultAgent: 'agent1',
       languageModel: 'model1',
       telemetry: {},
+      aiProvider: {},
     } as GlobalServerConfig;
 
     it('should not fetch user state if user is not login', async () => {
@@ -80,12 +160,14 @@ describe('createCommonSlice', () => {
       const mockUserState: UserInitializationState = {
         userId: 'user-id',
         isOnboard: true,
+        onboarding: { finishedAt: '2024-01-01T00:00:00Z', version: 1 },
         preference: {
           telemetry: true,
         },
         settings: {
-          general: { language: 'en-US' },
+          general: { fontSize: 14, timezone: 'America/New_York' },
         },
+        email: 'test@example.com',
       };
 
       vi.spyOn(userService, 'getUserState').mockResolvedValueOnce(mockUserState);
@@ -106,11 +188,15 @@ describe('createCommonSlice', () => {
 
       // 验证状态是否正确更新
       expect(useUserStore.getState().user?.avatar).toBe(mockUserState.avatar);
-      expect(useUserStore.getState().settings).toEqual(mockUserState.settings);
+      expect(userGeneralSettingsSelectors.config(useUserStore.getState() as any)).toEqual(
+        expect.objectContaining({
+          fontSize: 14,
+          responseLanguage: expect.any(String),
+          timezone: 'America/New_York',
+        }),
+      );
+      expect(useUserStore.getState().user?.email).toEqual(mockUserState.email);
       expect(successCallback).toHaveBeenCalledWith(mockUserState);
-
-      // 验证是否正确处理了语言设置
-      expect(switchLang).not.toHaveBeenCalledWith('auto');
     });
 
     it('should call switch language when language is auto', async () => {
@@ -131,9 +217,6 @@ describe('createCommonSlice', () => {
 
       // 等待 SWR 完成数据获取
       await waitFor(() => expect(result.current.data).toEqual(mockUserState));
-
-      // 验证是否正确处理了语言设置
-      expect(switchLang).toHaveBeenCalledWith('auto');
     });
 
     it('should fetch use server config correctly', async () => {
@@ -166,7 +249,7 @@ describe('createCommonSlice', () => {
         isOnboard: true,
         preference: savedPreference,
         settings: {
-          general: { language: 'en-US' },
+          general: { fontSize: 14 },
         },
       };
       vi.spyOn(userService, 'getUserState').mockResolvedValueOnce(mockUserState);
@@ -177,7 +260,7 @@ describe('createCommonSlice', () => {
       );
 
       await waitFor(() => {
-        expect(preference.current.data.preference).toEqual(savedPreference);
+        expect(preference.current.data?.preference).toEqual(savedPreference);
         expect(result.current.isUserStateInit).toBeTruthy();
         expect(result.current.preference).toEqual(savedPreference);
       });
@@ -188,6 +271,7 @@ describe('createCommonSlice', () => {
       const mockUserState: UserInitializationState = {
         userId: 'user-id',
         isOnboard: true,
+        onboarding: { finishedAt: '2024-01-01T00:00:00Z', version: 1 },
         preference: undefined as any,
         settings: null as any,
         avatar: 'abc',
@@ -204,7 +288,32 @@ describe('createCommonSlice', () => {
         expect(result.current.isUserStateInit).toBeTruthy();
         // 验证状态未被错误更新
         expect(result.current.user?.avatar).toEqual('abc');
-        expect(result.current.settings).toEqual({});
+        // When settings is null, auto-detect general settings will set them
+        expect(result.current.settings).toEqual({
+          general: { responseLanguage: expect.any(String), timezone: expect.any(String) },
+        });
+      });
+    });
+
+    it('should NOT auto-fill responseLanguage while onboarding is unfinished', async () => {
+      const { result } = renderHook(() => useUserStore());
+
+      const mockUserState: UserInitializationState = {
+        userId: 'user-id',
+        isOnboard: false,
+        // No onboarding.finishedAt: user is still in the onboarding flow.
+        preference: {} as any,
+        settings: { general: { fontSize: 14 } },
+      };
+      vi.spyOn(userService, 'getUserState').mockResolvedValueOnce(mockUserState);
+
+      renderHook(() => result.current.useInitUserState(true, mockServerConfig), {
+        wrapper: withSWR,
+      });
+
+      await waitFor(() => {
+        expect(result.current.isUserStateInit).toBeTruthy();
+        expect(result.current.settings.general?.responseLanguage).toBeUndefined();
       });
     });
 
@@ -216,7 +325,7 @@ describe('createCommonSlice', () => {
         isOnboard: true,
         preference: {} as any,
         settings: {
-          general: { language: 'en-US' },
+          general: { fontSize: 12 },
         },
       };
 
@@ -242,8 +351,8 @@ describe('createCommonSlice', () => {
       await waitFor(() => expect(result.current.data).toBeUndefined());
     });
 
-    it('should return false when userAllowTrace is already set', async () => {
-      vi.spyOn(preferenceSelectors, 'userAllowTrace').mockReturnValueOnce(true);
+    it('should return false when telemetry is already set', async () => {
+      vi.spyOn(userGeneralSettingsSelectors, 'telemetry').mockReturnValueOnce(true);
 
       const { result } = renderHook(() => useUserStore().useCheckTrace(true), {
         wrapper: withSWR,
@@ -253,7 +362,7 @@ describe('createCommonSlice', () => {
     });
 
     it('should call messageService.messageCountToCheckTrace when needed', async () => {
-      vi.spyOn(preferenceSelectors, 'userAllowTrace').mockReturnValueOnce(null);
+      vi.spyOn(userGeneralSettingsSelectors, 'telemetry').mockReturnValueOnce(undefined as any);
 
       act(() => {
         useUserStore.setState({

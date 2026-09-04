@@ -1,30 +1,32 @@
 'use client';
 
-import { FluentEmoji } from '@lobehub/ui';
-import { Button } from 'antd';
-import Link from 'next/link';
-import { memo, useLayoutEffect } from 'react';
+import { Accordion, AccordionItem, Block, Flexbox, FluentEmoji } from '@lobehub/ui';
+import { Button } from '@lobehub/ui/base-ui';
+import type { Key } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { MAX_WIDTH } from '@/const/layoutTokens';
 
-import { type ErrorType, sentryCaptureException } from './sentryCaptureException';
+const Highlighter = lazy(() => import('@lobehub/ui/es/Highlighter/index'));
+
+export type ErrorType = Error & { digest?: string };
 
 interface ErrorCaptureProps {
   error: ErrorType;
-  reset: () => void;
+  /** Where "back home" navigates; defaults to `/`. */
+  resetPath?: string;
 }
 
-const ErrorCapture = memo<ErrorCaptureProps>(({ reset, error }) => {
+const ErrorCapture = ({ error, resetPath = '/' }: ErrorCaptureProps) => {
   const { t } = useTranslation('error');
-
-  useLayoutEffect(() => {
-    sentryCaptureException(error);
-  }, [error]);
+  const hasStack = !!error?.stack;
+  const defaultExpandedKeys: Key[] = typeof __CI__ !== 'undefined' && __CI__ ? ['stack'] : [];
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>(defaultExpandedKeys);
+  const isExpanded = expandedKeys.includes('stack');
 
   return (
-    <Flexbox align={'center'} justify={'center'} style={{ minHeight: '100%', width: '100%' }}>
+    <Flexbox align={'center'} justify={'center'} style={{ minHeight: '100dvh', width: '100%' }}>
       <h1
         style={{
           filter: 'blur(8px)',
@@ -43,16 +45,40 @@ const ErrorCapture = memo<ErrorCaptureProps>(({ reset, error }) => {
         {t('error.title')}
       </h2>
       <p style={{ marginBottom: '2em' }}>{t('error.desc')}</p>
-      <Flexbox gap={12} horizontal style={{ marginBottom: '1em' }}>
-        <Button onClick={() => reset()}>{t('error.retry')}</Button>
-        <Link href="/">
-          <Button type={'primary'}>{t('error.backHome')}</Button>
-        </Link>
+      <Flexbox horizontal gap={12} style={{ marginBottom: '2em' }}>
+        <Button onClick={() => window.location.reload()}>{t('error.retry')}</Button>
+        <Button type={'primary'} onClick={() => (window.location.href = resetPath)}>
+          {t('error.backHome')}
+        </Button>
       </Flexbox>
+      {hasStack && (
+        <Block
+          variant={isExpanded ? 'outlined' : 'filled'}
+          style={{
+            marginBottom: '1em',
+            maxWidth: '90vw',
+            overflow: 'hidden',
+            transition: 'background 0.2s, border-color 0.2s',
+            width: 560,
+          }}
+        >
+          <Accordion
+            expandedKeys={expandedKeys}
+            variant={'borderless'}
+            onExpandedChange={setExpandedKeys}
+          >
+            <AccordionItem indicatorPlacement={'start'} itemKey={'stack'} title={t('error.stack')}>
+              <Suspense fallback={null}>
+                <Highlighter language={'plaintext'} padding={12} variant={'borderless'}>
+                  {error.stack!}
+                </Highlighter>
+              </Suspense>
+            </AccordionItem>
+          </Accordion>
+        </Block>
+      )}
     </Flexbox>
   );
-});
-
-ErrorCapture.displayName = 'ErrorCapture';
+};
 
 export default ErrorCapture;

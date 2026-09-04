@@ -1,5 +1,6 @@
-import { ReactNode } from 'react';
-import { Flexbox, type FlexboxProps } from 'react-layout-kit';
+import { type FlexboxProps } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
+import { type ReactNode } from 'react';
 
 interface MobileContentLayoutProps extends FlexboxProps {
   header?: ReactNode;
@@ -11,12 +12,14 @@ const MobileContentLayout = ({
   withNav,
   style,
   header,
+  id = 'lobe-mobile-scroll-container',
   ...rest
 }: MobileContentLayoutProps) => {
   const content = (
     <Flexbox
       height="100%"
-      id={'lobe-mobile-scroll-container'}
+      id={id}
+      width="100%"
       style={{
         overflowX: 'hidden',
         overflowY: 'auto',
@@ -25,7 +28,6 @@ const MobileContentLayout = ({
         // TabNav Height
         paddingBottom: withNav ? 48 : style?.paddingBottom,
       }}
-      width="100%"
       {...rest}
     >
       {children}
@@ -40,6 +42,7 @@ const MobileContentLayout = ({
       <Flexbox
         height="100%"
         id={'lobe-mobile-scroll-container'}
+        width="100%"
         style={{
           overflowX: 'hidden',
           overflowY: 'auto',
@@ -48,7 +51,6 @@ const MobileContentLayout = ({
           // TabNav Height
           paddingBottom: withNav ? 48 : style?.paddingBottom,
         }}
-        width="100%"
         {...rest}
       >
         {children}
@@ -56,7 +58,5 @@ const MobileContentLayout = ({
     </Flexbox>
   );
 };
-
-MobileContentLayout.displayName = 'MobileContentLayout';
 
 export default MobileContentLayout;
